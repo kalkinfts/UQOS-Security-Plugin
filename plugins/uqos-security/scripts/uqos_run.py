@@ -35,8 +35,8 @@ def build_command(tool: str, target: str, prefix: tuple[str, ...]) -> list[str]:
     raise ValueError(f"No command adapter is registered for: {tool}")
 
 
-async def stream_command(command: list[str], timeout: float) -> tuple[list[dict[str, Any]], int]:
-    """Run a bounded child process and capture timestamped stdout/stderr chunks."""
+async def stream_command(command: list[str], timeout: float, on_event=None) -> tuple[list[dict[str, Any]], int]:
+    """Run a bounded child process; invoke on_event immediately for each output chunk."""
     process = await asyncio.create_subprocess_exec(
         *command,
         stdout=asyncio.subprocess.PIPE,
@@ -93,6 +93,8 @@ async def stream_command(command: list[str], timeout: float) -> tuple[list[dict[
             sequence += 1
             item["sequence"] = sequence
             events.append(item)
+            if on_event is not None:
+                on_event(item)
 
     await asyncio.gather(*readers, return_exceptions=True)
     return events, 124 if timed_out else int(process.returncode or 0)
@@ -142,9 +144,10 @@ async def async_main(args: argparse.Namespace) -> int:
                 "tool": args.tool,
                 "backend": backend.name,
             }), flush=True)
-            events, returncode = await stream_command(command, timeout)
-            for event in events:
+            def emit_event(event: dict[str, Any]) -> None:
                 print(json.dumps({"schema": "uqos.security.event.v1", **event}), flush=True)
+
+            events, returncode = await stream_command(command, timeout, on_event=emit_event)
             base.update({
                 "status": "timeout" if returncode == 124 else "completed",
                 "returncode": returncode,
