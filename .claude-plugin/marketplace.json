@@ -1,0 +1,6 @@
+{
+  "name":"uqos-security-marketplace",
+  "owner":{"name":"kalkinfts"},
+  "metadata":{"description":"Authorized defensive security auditing and evidence tooling for Claude Code."},
+  "plugins":[{"name":"uqos-security","source":"./plugins/uqos-security","description":"Bounded, auditable defensive security assessment runner.","version":"1.0.0"}]
+}
