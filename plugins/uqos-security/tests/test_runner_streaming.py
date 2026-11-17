@@ -37,3 +37,15 @@ def test_stream_command_times_out_and_stops_child():
         assert returncode == 124
         assert any("started" in e["data"] for e in events)
     asyncio.run(run())
+
+from uqos_audit import append_audit
+
+
+def test_audit_records_form_a_hash_chain(tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
+    first = append_audit(str(audit_path), {"status": "first"})
+    second = append_audit(str(audit_path), {"status": "second"})
+    records = [json.loads(line) for line in audit_path.read_text().splitlines()]
+    assert records[0]["record_hash"] == first
+    assert records[1]["previous_hash"] == first
+    assert records[1]["record_hash"] == second
