@@ -31,8 +31,8 @@ def test_stream_command_emits_stdout_and_stderr_events():
 def test_stream_command_times_out_and_stops_child():
     async def run():
         events, returncode = await stream_command(
-            [sys.executable, "-c", "import time; print('started', flush=True); time.sleep(2)"],
-            timeout=0.1,
+            [sys.executable, "-c", "import time; print('started', flush=True); time.sleep(5)"],
+            timeout=1.0,
         )
         assert returncode == 124
         assert any("started" in e["data"] for e in events)
