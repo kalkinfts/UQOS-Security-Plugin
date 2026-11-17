@@ -28,8 +28,10 @@ def build_command(tool: str, target: str, prefix: tuple[str, ...]) -> list[str]:
         return [*prefix, "-u", target]
     if tool == "nikto":
         return [*prefix, "-h", target]
-    if tool in {"amass", "subfinder"}:
+    if tool == "amass":
         return [*prefix, "enum", "-d", target]
+    if tool == "subfinder":
+        return [*prefix, "-d", target]
     raise ValueError(f"No command adapter is registered for: {tool}")
 
 
