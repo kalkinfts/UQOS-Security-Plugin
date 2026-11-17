@@ -55,3 +55,18 @@ def test_tool_adapters_use_valid_tool_specific_arguments():
     from uqos_run import build_command
     assert build_command("amass", "example.com", ("amass",)) == ["amass", "enum", "-d", "example.com"]
     assert build_command("subfinder", "example.com", ("subfinder",)) == ["subfinder", "-d", "example.com"]
+
+
+def test_stream_command_calls_event_handler_as_chunks_arrive():
+    async def run():
+        observed = []
+        events, returncode = await stream_command(
+            [sys.executable, "-c", "import time; print('first', flush=True); time.sleep(0.15); print('second', flush=True)"],
+            timeout=3,
+            on_event=lambda event: observed.append(event.copy()),
+        )
+        assert returncode == 0
+        assert len(observed) == len(events) == 2
+        assert "first" in observed[0]["data"]
+        assert "second" in observed[1]["data"]
+    asyncio.run(run())
