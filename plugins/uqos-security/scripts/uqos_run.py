@@ -12,7 +12,7 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 from uqos_audit import append_audit
-from uqos_env import detect_backend, environment_snapshot
+from uqos_env import Backend, detect_backend, environment_snapshot
 from uqos_safeguards import authorize
 
 MAX_TIMEOUT = 300
@@ -113,7 +113,12 @@ async def async_main(args: argparse.Namespace) -> int:
     timeout = max(1, min(args.timeout, MAX_TIMEOUT))
     try:
         authorization = authorize(args.tool, args.target, args.execute)
-        backend = detect_backend(args.tool)
+        try:
+            backend = detect_backend(args.tool)
+        except RuntimeError:
+            if args.execute:
+                raise
+            backend = Backend("not-installed", (args.tool,))
         command = build_command(args.tool, args.target, backend.prefix)
         base: dict[str, Any] = {
             "schema": "uqos.security.result.v2",
