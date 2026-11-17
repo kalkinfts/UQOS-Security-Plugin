@@ -64,10 +64,17 @@ async def stream_command(command: list[str], timeout: float) -> tuple[list[dict[
     wait_task = asyncio.create_task(process.wait())
     completed_streams = 0
     timed_out = False
+    deadline = asyncio.get_running_loop().time() + timeout
 
     while completed_streams < 2:
         try:
-            item = await asyncio.wait_for(queue.get(), timeout=timeout if not wait_task.done() else None)
+            if timed_out:
+                item = await queue.get()
+            else:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError
+                item = await asyncio.wait_for(queue.get(), timeout=remaining)
         except asyncio.TimeoutError:
             timed_out = True
             if process.returncode is None:
@@ -77,7 +84,6 @@ async def stream_command(command: list[str], timeout: float) -> tuple[list[dict[
             except asyncio.TimeoutError:
                 process.kill()
                 await wait_task
-            # Continue draining pipes so no child output is lost.
             continue
         if item is None:
             completed_streams += 1
