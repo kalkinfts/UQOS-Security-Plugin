@@ -49,3 +49,9 @@ def test_audit_records_form_a_hash_chain(tmp_path):
     assert records[0]["record_hash"] == first
     assert records[1]["previous_hash"] == first
     assert records[1]["record_hash"] == second
+
+
+def test_tool_adapters_use_valid_tool_specific_arguments():
+    from uqos_run import build_command
+    assert build_command("amass", "example.com", ("amass",)) == ["amass", "enum", "-d", "example.com"]
+    assert build_command("subfinder", "example.com", ("subfinder",)) == ["subfinder", "-d", "example.com"]
