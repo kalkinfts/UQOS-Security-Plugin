@@ -1,0 +1,8 @@
+{
+  "name":"uqos-security",
+  "version":"1.0.0",
+  "description":"Authorized defensive security assessment, verification, and evidence tooling.",
+  "author":{"name":"kalkinfts"},
+  "license":"MIT",
+  "skills":["./skills/uqos-security"]
+}
