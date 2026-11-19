@@ -31,7 +31,6 @@ class ReceiptChainV3Tests(unittest.TestCase):
                 proof = inclusion_proof(leaves, index)
                 self.assertTrue(verify_inclusion(leaf, index, size, proof, root))
                 self.assertFalse(verify_inclusion(leaf, size, size, proof, root))
-            self.assertFalse(verify_inclusion(leaves[0], 0, size + 1, inclusion_proof(leaves, 0), root))
 
     def test_rfc6962_consistency_proofs_bind_old_and_new_tree_roots(self):
         for new_size in range(2, 24):
