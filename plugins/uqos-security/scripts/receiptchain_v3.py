@@ -119,6 +119,61 @@ def inclusion_proof(leaves: list[bytes], index: int) -> list[bytes]:
     return inclusion_proof(leaves[k:], index - k) + [merkle_root(leaves[:k])]
 
 
+def _consistency_subproof(old_size: int, leaves: list[bytes], complete: bool = True) -> list[bytes]:
+    new_size = len(leaves)
+    if old_size == new_size:
+        return [] if complete else [merkle_root(leaves)]
+    k = _largest_power_of_two_less_than(new_size)
+    if old_size <= k:
+        return _consistency_subproof(old_size, leaves[:k], complete) + [merkle_root(leaves[k:])]
+    return _consistency_subproof(old_size - k, leaves[k:], False) + [merkle_root(leaves[:k])]
+
+
+def consistency_proof(leaves: list[bytes], old_size: int) -> list[bytes]:
+    if old_size < 0 or old_size > len(leaves):
+        raise ReceiptError("Previous tree size outside current tree")
+    if old_size == 0 or old_size == len(leaves):
+        return []
+    return _consistency_subproof(old_size, leaves, True)
+
+
+def verify_consistency(old_size: int, new_size: int, old_root: bytes,
+                       new_root: bytes, proof: Iterable[bytes]) -> bool:
+    path = list(proof)
+    if old_size < 0 or new_size < old_size:
+        return False
+    if old_size == 0:
+        return True
+    if old_size == new_size:
+        return not path and old_root == new_root
+    fn, sn = old_size - 1, new_size - 1
+    while fn & 1:
+        fn >>= 1
+        sn >>= 1
+    if fn == 0:
+        first = second = old_root
+        offset = 0
+    else:
+        if not path:
+            return False
+        first = second = path[0]
+        offset = 1
+    for sibling in path[offset:]:
+        if sn == 0:
+            return False
+        if (fn & 1) or fn == sn:
+            first = node_hash(sibling, first)
+            second = node_hash(sibling, second)
+            while fn and not (fn & 1):
+                fn >>= 1
+                sn >>= 1
+        else:
+            second = node_hash(second, sibling)
+        fn >>= 1
+        sn >>= 1
+    return first == old_root and second == new_root and sn == 0
+
+
 def verify_inclusion(data: bytes, index: int, size: int, proof: Iterable[bytes], root: bytes) -> bool:
     if size <= 0 or index < 0 or index >= size:
         return False
@@ -325,7 +380,7 @@ class ReceiptChain:
             db.commit()
         return {"receipt": receipt, "receipt_hash": receipt_hash, "leaf_index": leaf_index}
 
-    def proof_bundle(self, run_id: str, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    def proof_bundle(self, run_id: str, checkpoint: dict[str, Any],\n                     previous_checkpoint: dict[str, Any] | None = None) -> dict[str, Any]:
         with self._connect() as db:
             receipt_row = db.execute("SELECT * FROM receipts WHERE run_id=?", (run_id,)).fetchone()
             leaves = [r["leaf"] for r in db.execute("SELECT leaf FROM log_leaves ORDER BY leaf_index")]
@@ -333,11 +388,20 @@ class ReceiptChain:
             raise ReceiptError("No committed receipt for run")
         idx = receipt_row["leaf_index"]
         root = merkle_root(leaves)
-        return {"schema": "receiptchain.bundle.v3", "receipt": json.loads(receipt_row["receipt"]),
-                "receipt_hash": receipt_row["receipt_hash"], "leaf_index": idx,
-                "tree_size": len(leaves), "root_hash": root.hex(),
-                "inclusion_proof": [p.hex() for p in inclusion_proof(leaves, idx)],
-                "checkpoint": checkpoint}
+        bundle = {"schema": "receiptchain.bundle.v3", "receipt": json.loads(receipt_row["receipt"]),
+                  "receipt_hash": receipt_row["receipt_hash"], "leaf_index": idx,
+                  "tree_size": len(leaves), "root_hash": root.hex(),
+                  "inclusion_proof": [p.hex() for p in inclusion_proof(leaves, idx)],
+                  "checkpoint": checkpoint}
+        if previous_checkpoint is not None:
+            old_size = previous_checkpoint.get("tree_size")
+            if not isinstance(old_size, int) or old_size < 0 or old_size > len(leaves):
+                raise ReceiptError("Previous checkpoint has an invalid tree size")
+            bundle["consistency"] = {
+                "previous_checkpoint": previous_checkpoint,
+                "proof": [p.hex() for p in consistency_proof(leaves, old_size)],
+            }
+        return bundle
 
 
 def verify_bundle(bundle: dict[str, Any], policy: AttestationPolicy,
