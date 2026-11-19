@@ -8,7 +8,7 @@ ReceiptChain v3 adds a fail-closed execution receipt ledger to UQOS. It is an ad
 - Monotonic per-run fencing tokens; every step and close checks owner, fence, expiry and run lifecycle inside the same write transaction.
 - Zero-step runs cannot close or produce a receipt.
 - Contiguous step sequence and per-step SHA-256 commitments.
-- RFC 6962 domain-separated Merkle leaf/node hashes, inclusion proof generation and verification bound to both leaf index and tree size.
+- RFC 6962 domain-separated Merkle leaf/node hashes, inclusion proofs bound to both leaf index and tree size, plus consistency proof generation and verification between signed checkpoints.
 - Offline bundle verification reconstructs the canonical receipt leaf, validates every step hash, checks the inclusion proof and requires an externally verified checkpoint.
 - Attestation binding is stable before close: run ID, owner, fencing token, start time and digest of the complete ordered step list.
 - SHA-512 report_data binding for the attestation callback.
@@ -44,7 +44,7 @@ binding = chain.attestation_binding("run-123", "runner-a", fence)
 # attestation = create_and_verify_platform_attestation(binding)
 result = chain.close_run("run-123", "runner-a", fence, attestation)
 # Publish a signed transparency checkpoint, then:
-bundle = chain.proof_bundle("run-123", checkpoint)
+bundle = chain.proof_bundle("run-123", checkpoint, previous_checkpoint=None)
 # Offline:
 # verify_bundle(bundle, attestation_policy, checkpoint_verifier)
 ```
