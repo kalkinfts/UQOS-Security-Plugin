@@ -153,7 +153,7 @@ def verify_attestation(binding: dict[str, Any], evidence: dict[str, Any],
     required = {"quote", "collateral"}
     if not isinstance(evidence, dict) or not required.issubset(evidence):
         raise ReceiptError("Attestation evidence must include raw quote and collateral")
-    expected = sha256(b"ReceiptChain/TDX/report-data/v3\x00" + canonical_json(binding))
+    expected = hashlib.sha512(b"ReceiptChain/TDX/report-data/v3\x00" + canonical_json(binding)).digest()
     verified = policy.quote_verifier(evidence)
     if not isinstance(verified, dict) or verified.get("verified") is not True:
         raise ReceiptError("Platform quote verification failed")
@@ -253,6 +253,23 @@ class ReceiptChain:
             db.commit()
         return digest
 
+    def attestation_binding(self, run_id: str, owner: str, fence: int) -> dict[str, Any]:
+        """Return the stable binding to sign after all steps and before close_run."""
+        with self._connect() as db:
+            run = db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            lease = db.execute("SELECT * FROM leases WHERE run_id=?", (run_id,)).fetchone()
+            steps = db.execute("SELECT sequence,payload,step_hash FROM steps "
+                               "WHERE run_id=? ORDER BY sequence", (run_id,)).fetchall()
+        if (not run or not lease or run["owner"] != owner or lease["owner"] != owner
+            or run["fence"] != fence or lease["fence"] != fence
+            or lease["expires_ns"] <= time.time_ns() or run["closed"] or not steps):
+            raise ReceiptError("Cannot bind attestation to an invalid, expired or empty run")
+        material = [{"sequence": s["sequence"], "payload": json.loads(s["payload"]),
+                     "step_hash": s["step_hash"]} for s in steps]
+        return {"run_id": run_id, "owner": owner, "fencing_token": fence,
+                "started_ns": run["started_ns"],
+                "steps_digest": sha256(canonical_json(material)).hex()}
+
     def close_run(self, run_id: str, owner: str, fence: int,
                   attestation: dict[str, Any] | None = None) -> dict[str, Any]:
         now = time.time_ns()
@@ -273,13 +290,15 @@ class ReceiptChain:
             if [s["sequence"] for s in steps] != list(range(1, len(steps) + 1)):
                 db.rollback()
                 raise ReceiptError("Step sequence is not contiguous")
+            step_material = [{"sequence": s["sequence"], "payload": json.loads(s["payload"]),
+                              "step_hash": s["step_hash"]} for s in steps]
+            steps_digest = sha256(canonical_json(step_material)).hex()
             receipt = {
                 "schema": "receiptchain.receipt.v3", "run_id": run_id,
                 "owner": owner, "fencing_token": fence,
                 "started_ns": run["started_ns"], "closed_ns": now,
-                "step_count": len(steps),
-                "steps": [{"sequence": s["sequence"], "payload": json.loads(s["payload"]),
-                           "step_hash": s["step_hash"]} for s in steps],
+                "step_count": len(steps), "steps_digest": steps_digest,
+                "steps": step_material,
                 "attestation": attestation,
             }
             encoded = canonical_json(receipt)
@@ -340,9 +359,14 @@ def verify_bundle(bundle: dict[str, Any], policy: AttestationPolicy,
         attestation = receipt.get("attestation")
         if not isinstance(attestation, dict):
             return False
+        step_material = receipt["steps"]
+        expected_steps_digest = sha256(canonical_json(step_material)).hex()
+        if receipt.get("steps_digest") != expected_steps_digest:
+            return False
         binding = {"run_id": receipt["run_id"], "owner": receipt["owner"],
                    "fencing_token": receipt["fencing_token"],
-                   "receipt_hash": bundle["receipt_hash"]}
+                   "started_ns": receipt["started_ns"],
+                   "steps_digest": expected_steps_digest}
         verify_attestation(binding, attestation, policy)
         return True
     except (KeyError, TypeError, ValueError, ReceiptError, UnicodeError):
