@@ -1,0 +1,27 @@
+name: UQOS SIG-TD TTC CI
+
+on:
+  push:
+    paths:
+      - 'plugins/uqos-security/scripts/sig_td_ttc.py'
+      - 'plugins/uqos-security/tests/test_sig_td_ttc.py'
+      - 'plugins/uqos-security/requirements-sig-td.txt'
+      - 'docs/SIG_TD_TTC.md'
+  pull_request:
+    paths:
+      - 'plugins/uqos-security/scripts/sig_td_ttc.py'
+      - 'plugins/uqos-security/tests/test_sig_td_ttc.py'
+      - 'plugins/uqos-security/requirements-sig-td.txt'
+      - 'docs/SIG_TD_TTC.md'
+
+jobs:
+  sig-td:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r plugins/uqos-security/requirements-sig-td.txt pytest
+      - run: python -m compileall plugins/uqos-security/scripts plugins/uqos-security/tests
+      - run: python -m pytest plugins/uqos-security/tests/test_sig_td_ttc.py -q
