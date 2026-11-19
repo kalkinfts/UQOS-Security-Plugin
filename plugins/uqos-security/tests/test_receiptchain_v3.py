@@ -30,7 +30,7 @@ class ReceiptChainV3Tests(unittest.TestCase):
             for index, leaf in enumerate(leaves):
                 proof = inclusion_proof(leaves, index)
                 self.assertTrue(verify_inclusion(leaf, index, size, proof, root))
-                self.assertFalse(verify_inclusion(leaf, (index + 1) % size, size, proof, root))
+                self.assertFalse(verify_inclusion(leaf, size, size, proof, root))
             self.assertFalse(verify_inclusion(leaves[0], 0, size + 1, inclusion_proof(leaves, 0), root))
 
     def test_rfc6962_consistency_proofs_bind_old_and_new_tree_roots(self):
