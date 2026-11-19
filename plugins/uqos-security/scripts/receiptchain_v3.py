@@ -445,6 +445,14 @@ def verify_bundle(bundle: dict[str, Any], policy: AttestationPolicy,
                    "steps_digest": expected_steps_digest}
         if attestation.get("binding") != binding:
             return False
+        consistency = bundle.get("consistency")
+        if consistency is not None:
+            previous = consistency["previous_checkpoint"]
+            old_size = previous["tree_size"]
+            if (not checkpoint_verifier(previous)
+                or not verify_consistency(old_size, size, bytes.fromhex(previous["root_hash"]),
+                                          root, [bytes.fromhex(p) for p in consistency["proof"]])):
+                return False
         verify_attestation(binding, attestation, policy)
         return True
     except (KeyError, TypeError, ValueError, ReceiptError, UnicodeError):
