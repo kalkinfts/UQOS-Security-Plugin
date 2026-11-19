@@ -329,7 +329,7 @@ class ReceiptChain:
         material = [{"sequence": s["sequence"], "payload": json.loads(s["payload"]),
                      "step_hash": s["step_hash"]} for s in steps]
         return {"run_id": run_id, "owner": owner, "fencing_token": fence,
-                "started_ns": run["started_ns"],
+                "started_ns": str(run["started_ns"]),
                 "steps_digest": sha256(canonical_json(material)).hex()}
 
     def close_run(self, run_id: str, owner: str, fence: int,
@@ -363,7 +363,7 @@ class ReceiptChain:
             receipt = {
                 "schema": "receiptchain.receipt.v3", "run_id": run_id,
                 "owner": owner, "fencing_token": fence,
-                "started_ns": run["started_ns"], "closed_ns": now,
+                "started_ns": str(run["started_ns"]), "closed_ns": str(now),
                 "step_count": len(steps), "steps_digest": steps_digest,
                 "steps": step_material,
                 "attestation": attestation,
