@@ -14,6 +14,12 @@ Authorized defensive security auditing and evidence tooling for Claude Code.
 
 This is an extensible adapter architecture, **not a claim that 183 tools are currently integrated**. Only the six adapters listed above are currently allowlisted and implemented. Additional tools require an adapter, safety policy, tests, and documentation before they can be described as supported.
 
+## ReceiptChain v3
+
+The repository now includes an additive SQLite-backed proof-carrying receipt ledger with atomic fencing, zero-step rejection, SHA-512 attestation binding, and RFC 6962 inclusion proofs. See [docs/RECEIPTCHAIN_V3.md](docs/RECEIPTCHAIN_V3.md) for the trust boundary, API sequence, and test command.
+
+The platform quote verifier and transparency-checkpoint signature verifier are intentionally injected trust roots. The included fixture tests do not claim real Intel TDX hardware attestation.
+
 ## Install
 
 ```text
