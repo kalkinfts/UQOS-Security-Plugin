@@ -20,6 +20,18 @@ The repository now includes an additive SQLite-backed proof-carrying receipt led
 
 The platform quote verifier and transparency-checkpoint signature verifier are intentionally injected trust roots. The included fixture tests do not claim real Intel TDX hardware attestation.
 
+## Stateful Bi-Directional Streaming Substrate
+
+`plugins/uqos-security/scripts/uqos_stream.py` adds a transport-neutral continuous synchronization layer. External events and UQOS outbound mutations share one deterministic state ledger with monotonic versions, SHA-256 state hashes, predecessor chaining, idempotency keys, and optimistic concurrency checks. `uqos_run.py` now attaches live state hashes to streamed security output and creates a ReceiptChain receipt for executed runs.
+
+The production transport can be Supabase Realtime Broadcast, WebSockets, or another CDC/webhook transport. Supabase currently recommends Realtime Broadcast for scalable secure database change delivery and documents Database Webhooks for asynchronous INSERT/UPDATE/DELETE delivery. See [docs/STATEFUL_STREAMING.md](docs/STATEFUL_STREAMING.md).
+
+**Trust boundary:** a state hash proves synchronization of a canonical software state representation. It does not mean external systems can directly mutate an LLM's private KV-cache, nor does it constitute hardware attestation. The runner's default receipt attestation is explicitly development-only and must be replaced by a trusted TDX quote verifier for production hardware-backed evidence.
+
+## Monetization substrate
+
+`uqos_substrate.py` exposes deterministic usage records for `stream_event`, `stream_bytes`, and production `verified_receipt` metering. This keeps billing provider-neutral and prevents payment secrets from entering the security substrate. A recommended free/pro/security-pro/enterprise packaging is documented in `docs/STATEFUL_STREAMING.md`.
+
 ## Install
 
 ```text

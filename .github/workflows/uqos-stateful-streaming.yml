@@ -1,0 +1,28 @@
+name: UQOS Stateful Streaming CI
+
+on:
+  push:
+    paths:
+      - 'plugins/uqos-security/**'
+      - 'docs/STATEFUL_STREAMING.md'
+      - '.github/workflows/uqos-stateful-streaming.yml'
+  pull_request:
+    paths:
+      - 'plugins/uqos-security/**'
+      - 'docs/STATEFUL_STREAMING.md'
+      - '.github/workflows/uqos-stateful-streaming.yml'
+
+jobs:
+  stateful-streaming:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m compileall plugins/uqos-security/scripts plugins/uqos-security/tests
+      - name: Run substrate regression tests
+        run: python -m pytest plugins/uqos-security/tests -q
+      - name: Run deterministic streaming demo
+        run: python plugins/uqos-security/scripts/uqos_stream.py
