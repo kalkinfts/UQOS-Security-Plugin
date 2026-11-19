@@ -4,6 +4,10 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+import sys
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(SCRIPT_DIR))
 
 from receiptchain_v3 import (
     AttestationPolicy, ReceiptChain, ReceiptError, canonical_json,
