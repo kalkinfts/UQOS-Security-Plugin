@@ -158,14 +158,14 @@ def verify_attestation(binding: dict[str, Any], evidence: dict[str, Any],
     if not isinstance(verified, dict) or verified.get("verified") is not True:
         raise ReceiptError("Platform quote verification failed")
     report_data = verified.get("report_data")
-    if not isinstance(report_data, (bytes, bytearray)) or bytes(report_data)[:32] != expected:
+    if not isinstance(report_data, (bytes, bytearray)) or bytes(report_data) != expected:
         raise ReceiptError("Quote report_data does not bind this run")
     mrtd = verified.get("mrtd")
     if not isinstance(mrtd, str) or mrtd not in policy.allowed_mrtd:
         raise ReceiptError("TD measurement is not allowlisted")
     if not policy.tcb_policy(verified):
         raise ReceiptError("TCB policy rejected the platform state")
-    return {"mrtd": mrtd, "report_data_sha256": expected.hex(),
+    return {"mrtd": mrtd, "report_data_sha512": expected.hex(),
             "attestation_status": "verified-by-configured-platform-verifier"}
 
 
