@@ -237,6 +237,8 @@ class ReceiptChain:
 
     def record_step(self, run_id: str, owner: str, fence: int, payload: dict[str, Any],
                     ttl_ms: int = 30_000) -> str:
+        if ttl_ms <= 0:
+            raise ReceiptError("ttl_ms must be positive")
         encoded = canonical_json(payload)
         digest = sha256(encoded).hex()
         now = time.time_ns()
@@ -298,6 +300,11 @@ class ReceiptChain:
             step_material = [{"sequence": s["sequence"], "payload": json.loads(s["payload"]),
                               "step_hash": s["step_hash"]} for s in steps]
             steps_digest = sha256(canonical_json(step_material)).hex()
+            expected_binding = {"run_id": run_id, "owner": owner, "fencing_token": fence,
+                                "started_ns": run["started_ns"], "steps_digest": steps_digest}
+            if not isinstance(attestation, dict) or attestation.get("binding") != expected_binding:
+                db.rollback()
+                raise ReceiptError("Attestation must carry the exact stable run binding")
             receipt = {
                 "schema": "receiptchain.receipt.v3", "run_id": run_id,
                 "owner": owner, "fencing_token": fence,
@@ -372,6 +379,8 @@ def verify_bundle(bundle: dict[str, Any], policy: AttestationPolicy,
                    "fencing_token": receipt["fencing_token"],
                    "started_ns": receipt["started_ns"],
                    "steps_digest": expected_steps_digest}
+        if attestation.get("binding") != binding:
+            return False
         verify_attestation(binding, attestation, policy)
         return True
     except (KeyError, TypeError, ValueError, ReceiptError, UnicodeError):
