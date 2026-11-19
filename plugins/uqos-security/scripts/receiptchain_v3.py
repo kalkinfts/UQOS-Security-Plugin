@@ -380,7 +380,8 @@ class ReceiptChain:
             db.commit()
         return {"receipt": receipt, "receipt_hash": receipt_hash, "leaf_index": leaf_index}
 
-    def proof_bundle(self, run_id: str, checkpoint: dict[str, Any],\n                     previous_checkpoint: dict[str, Any] | None = None) -> dict[str, Any]:
+    def proof_bundle(self, run_id: str, checkpoint: dict[str, Any],
+                     previous_checkpoint: dict[str, Any] | None = None) -> dict[str, Any]:
         with self._connect() as db:
             receipt_row = db.execute("SELECT * FROM receipts WHERE run_id=?", (run_id,)).fetchone()
             leaves = [r["leaf"] for r in db.execute("SELECT leaf FROM log_leaves ORDER BY leaf_index")]
