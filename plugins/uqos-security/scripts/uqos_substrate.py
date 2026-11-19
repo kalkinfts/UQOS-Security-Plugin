@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -46,8 +47,8 @@ class UsageMeter:
         return record
 
     def charge_event(self, event: StateEvent, meter: str = "stream_event") -> UsageRecord | None:
-        units = max(1, len(json.dumps(event.payload, separators=(",", ":")).encode("utf-8")))
-        return self.charge(event.event_id, meter, units, event.state_hash, event.idempotency_key)
+        payload_bytes = len(json.dumps(event.payload, separators=(",", ":")).encode("utf-8"))
+        return self.charge(event.event_id, meter, payload_bytes, event.state_hash, event.idempotency_key)
 
     def export_jsonl(self) -> str:
         return "".join(json.dumps(r.as_dict(), sort_keys=True) + "\n" for r in self.records)
@@ -88,7 +89,6 @@ class UQOSSubstrate:
         )
 
     def record_ttc_evidence(self, evidence: dict[str, Any], *, state_hash: str | None = None) -> UsageRecord:
-        """Meter a SIG-TD verification result without coupling billing to execution."""
         evidence_hash = evidence.get("evidence_hash") or hashlib.sha256(
             json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -129,7 +129,7 @@ class UQOSSubstrate:
         return {
             "schema": "uqos.billing.meter.v2",
             "meters": {
-                "stream_event": sum(r.units for r in self.usage.records if r.meter == "stream_event"),
+                "stream_event": sum(1 for r in self.usage.records if r.meter == "stream_event"),
                 "stream_bytes": sum(r.units for r in self.usage.records if r.meter == "stream_event"),
                 "ttc_routed_event": sum(r.units for r in self.usage.records if r.meter == "ttc_routed_event"),
                 "smt_verification_ms": sum(r.units for r in self.usage.records if r.meter == "smt_verification_ms"),
