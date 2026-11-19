@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Test native verifier
-        run: cargo test --manifest-path plugins/uqos-security/native/Cargo.toml --locked
+        run: cargo test --manifest-path plugins/uqos-security/native/Cargo.toml
 
   projection:
     runs-on: ubuntu-latest
