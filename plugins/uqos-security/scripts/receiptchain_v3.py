@@ -175,21 +175,30 @@ def verify_consistency(old_size: int, new_size: int, old_root: bytes,
 
 
 def verify_inclusion(data: bytes, index: int, size: int, proof: Iterable[bytes], root: bytes) -> bool:
+    """Verify an RFC 6962 inclusion path against the exact claimed tree shape."""
+    path = list(proof)
     if size <= 0 or index < 0 or index >= size:
         return False
-    fn, sn = index, size - 1
-    value = leaf_hash(data)
-    for sibling in proof:
-        if fn & 1 or fn == sn:
-            value = node_hash(sibling, value)
-            while fn and not (fn & 1):
-                fn >>= 1
-                sn >>= 1
-        else:
-            value = node_hash(value, sibling)
-        fn >>= 1
-        sn >>= 1
-    return sn == 0 and value == root
+
+    def walk(tree_size: int, leaf_index: int, offset: int) -> tuple[bytes, int]:
+        if tree_size == 1:
+            return leaf_hash(data), offset
+        split = _largest_power_of_two_less_than(tree_size)
+        if leaf_index < split:
+            child, used = walk(split, leaf_index, offset)
+            if used >= len(path):
+                raise ReceiptError("Truncated inclusion proof")
+            return node_hash(child, path[used]), used + 1
+        child, used = walk(tree_size - split, leaf_index - split, offset)
+        if used >= len(path):
+            raise ReceiptError("Truncated inclusion proof")
+        return node_hash(path[used], child), used + 1
+
+    try:
+        calculated, consumed = walk(size, index, 0)
+        return consumed == len(path) and calculated == root
+    except (ReceiptError, IndexError, TypeError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -356,7 +365,7 @@ class ReceiptChain:
                               "step_hash": s["step_hash"]} for s in steps]
             steps_digest = sha256(canonical_json(step_material)).hex()
             expected_binding = {"run_id": run_id, "owner": owner, "fencing_token": fence,
-                                "started_ns": run["started_ns"], "steps_digest": steps_digest}
+                                "started_ns": str(run["started_ns"]), "steps_digest": steps_digest}
             if not isinstance(attestation, dict) or attestation.get("binding") != expected_binding:
                 db.rollback()
                 raise ReceiptError("Attestation must carry the exact stable run binding")
