@@ -11,6 +11,7 @@ import hashlib
 import json
 import sqlite3
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -202,10 +203,14 @@ class ReceiptChain:
                 );
             """)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         db = sqlite3.connect(self.db_path, timeout=15, isolation_level=None)
         db.row_factory = sqlite3.Row
-        return db
+        try:
+            yield db
+        finally:
+            db.close()
 
     def begin_run(self, run_id: str, owner: str, ttl_ms: int = 30_000) -> int:
         if not run_id or not owner or ttl_ms <= 0:
