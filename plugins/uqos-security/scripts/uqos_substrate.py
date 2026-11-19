@@ -1,9 +1,5 @@
-"""UQOS Substrate: state synchronization + proof-carrying usage metering.
+"""UQOS Substrate: state synchronization, SIG-TD evidence and metering."""
 
-This module composes the event ledger with ReceiptChain without pretending that
-software-generated evidence is hardware attestation. A production deployment
-supplies a trusted attestation provider for receipt finalization.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from receiptchain_v3 import ReceiptChain, ReceiptError
+from receiptchain_v3 import ReceiptChain
 from uqos_stream import StateEvent, StateLedger
 
 
@@ -41,21 +37,24 @@ class UsageMeter:
         self.records: list[UsageRecord] = []
         self._seen: set[str] = set()
 
-    def charge_event(self, event: StateEvent, meter: str = "stream_event") -> UsageRecord | None:
-        if event.idempotency_key in self._seen:
+    def charge(self, event_id: str, meter: str, units: int, state_hash: str, idempotency_key: str) -> UsageRecord | None:
+        if idempotency_key in self._seen:
             return None
-        units = max(1, len(json.dumps(event.payload, separators=(",", ":")).encode("utf-8")))
-        record = UsageRecord(event.event_id, meter, units, event.state_hash, event.idempotency_key)
+        record = UsageRecord(event_id, meter, max(1, int(units)), state_hash, idempotency_key)
         self.records.append(record)
-        self._seen.add(event.idempotency_key)
+        self._seen.add(idempotency_key)
         return record
+
+    def charge_event(self, event: StateEvent, meter: str = "stream_event") -> UsageRecord | None:
+        units = max(1, len(json.dumps(event.payload, separators=(",", ":")).encode("utf-8")))
+        return self.charge(event.event_id, meter, units, event.state_hash, event.idempotency_key)
 
     def export_jsonl(self) -> str:
         return "".join(json.dumps(r.as_dict(), sort_keys=True) + "\n" for r in self.records)
 
 
 class UQOSSubstrate:
-    """Single composition point for live state, event flow and ReceiptChain."""
+    """Single composition point for live state, ReceiptChain, SIG-TD and billing meters."""
 
     def __init__(self, state_db: str = ".uqos/state.json", receipt_db: str = ".uqos/receipts.sqlite3"):
         self.state_path = state_db
@@ -88,6 +87,30 @@ class UQOSSubstrate:
             {"schema": "uqos.stream.step.v1", "event": event.as_dict()},
         )
 
+    def record_ttc_evidence(self, evidence: dict[str, Any], *, state_hash: str | None = None) -> UsageRecord:
+        """Meter a SIG-TD verification result without coupling billing to execution."""
+        evidence_hash = evidence.get("evidence_hash") or hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return self.usage.charge(
+            evidence_hash,
+            "verified_candidate" if evidence.get("accepted") else "ttc_routed_event",
+            1,
+            state_hash or self.ledger.state_hash,
+            f"sigtd:{evidence_hash}",
+        )
+
+    def record_smt_time(self, elapsed_us: float, *, state_hash: str | None = None) -> UsageRecord:
+        units = max(1, math.ceil(float(elapsed_us) / 1000.0))
+        event_id = hashlib.sha256(f"smt:{elapsed_us}:{state_hash or self.ledger.state_hash}".encode()).hexdigest()
+        return self.usage.charge(
+            event_id,
+            "smt_verification_ms",
+            units,
+            state_hash or self.ledger.state_hash,
+            event_id,
+        )
+
     def attestation_binding(self, run_id: str, owner: str, fence: int) -> dict[str, Any]:
         return self.receipt_chain.attestation_binding(run_id, owner, fence)
 
@@ -104,10 +127,13 @@ class UQOSSubstrate:
 
     def pricing_meter_export(self) -> dict[str, Any]:
         return {
-            "schema": "uqos.billing.meter.v1",
+            "schema": "uqos.billing.meter.v2",
             "meters": {
-                "stream_event": len([r for r in self.usage.records if r.meter == "stream_event"]),
+                "stream_event": sum(r.units for r in self.usage.records if r.meter == "stream_event"),
                 "stream_bytes": sum(r.units for r in self.usage.records if r.meter == "stream_event"),
+                "ttc_routed_event": sum(r.units for r in self.usage.records if r.meter == "ttc_routed_event"),
+                "smt_verification_ms": sum(r.units for r in self.usage.records if r.meter == "smt_verification_ms"),
+                "verified_candidate": sum(r.units for r in self.usage.records if r.meter == "verified_candidate"),
                 "verified_receipt": 0,
             },
             "usage_sha256": hashlib.sha256(self.usage.export_jsonl().encode()).hexdigest(),
@@ -115,7 +141,6 @@ class UQOSSubstrate:
 
 
 def development_attestation(binding: dict[str, Any]) -> dict[str, Any]:
-    """Development-only binding envelope; intentionally not TDX evidence."""
     return {
         "mode": "development",
         "binding": binding,
