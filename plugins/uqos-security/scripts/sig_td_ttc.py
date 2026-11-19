@@ -1,34 +1,19 @@
-"""UQOS SIG-TD: entropy-routed speculative symbolic execution.
+"""UQOS SIG-TD: entropy-routed speculative symbolic execution."""
 
-The implementation is deliberately honest about the boundary:
-- entropy routing and incremental SMT pruning are executable today;
-- candidate ASTs are supplied by a draft/projection component;
-- KV-cache hashes are commitments, not direct access to a transformer cache;
-- SMT UNSAT proves absence of a modeled counterexample under the encoded model,
-  not correctness of arbitrary generated code.
-
-This module is designed to sit before irreversible UQOS execution and to emit
-proof-carrying routing evidence that ReceiptChain can record.
-"""
 from __future__ import annotations
 
 import hashlib
 import json
 import math
 import time
-from dataclasses import dataclass, asdict
-from typing import Any, Iterable, Sequence
+from dataclasses import dataclass
+from typing import Any, Iterable, Protocol, Sequence
 
 try:
-    import numpy as np
-except ImportError:  # pragma: no cover
-    np = None
-
-try:
-    from z3 import And, Bool, Int, Not, Or, Solver, sat, unsat, unknown
+    from z3 import And, Bool, Int, Not, Or, Solver, unknown, unsat
 except ImportError:  # pragma: no cover
     And = Bool = Int = Not = Or = Solver = None
-    sat = unsat = unknown = None
+    unknown = unsat = None
 
 
 def canonical_bytes(value: Any) -> bytes:
@@ -46,6 +31,20 @@ def shannon_entropy(logits: Sequence[float]) -> float:
     exps = [math.exp(float(x) - m) for x in logits]
     total = sum(exps)
     return -sum((x / total) * math.log2((x / total) + 1e-12) for x in exps)
+
+
+def estimate_fvc(ast_fragment: str, *, solver_history: float = 0.0) -> float:
+    """Cheap normalized heuristic; production replaces this with calibrated ML FVC."""
+    text = ast_fragment or ""
+    branch = text.count("if ") + text.count("else") + text.count("match") + text.count("switch")
+    memory = text.count("*") + text.count("[") + text.count("lock") + text.count("atomic")
+    concurrency = text.count("thread") + text.count("async") + text.count("await")
+    raw = 0.12 * min(branch, 8) + 0.12 * min(memory, 8) + 0.18 * min(concurrency, 4) + 0.25 * max(0.0, solver_history)
+    return min(1.0, raw)
+
+
+class EGraphReducer(Protocol):
+    def reduce(self, ast_fragment: str) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -111,8 +110,7 @@ class IncrementalSymbolicVerifier:
     def verify(self, candidates: Sequence[SpeculativeNode], budget_ms: float) -> VerificationResult:
         start = time.perf_counter_ns()
         checked = 0
-        ranked = sorted(candidates, key=lambda x: x.logit_prob, reverse=True)
-        for node in ranked:
+        for node in sorted(candidates, key=lambda x: x.logit_prob, reverse=True):
             if (time.perf_counter_ns() - start) / 1e6 >= budget_ms:
                 break
             checked += 1
@@ -159,22 +157,9 @@ class IncrementalSymbolicVerifier:
         )
 
 
-def build_candidate(
-    token_id: int,
-    ast_fragment: str,
-    logit_prob: float,
-    constraints: Iterable[Any],
-    kv_payload: Any,
-    fvc_score: float = 0.0,
-) -> SpeculativeNode:
-    return SpeculativeNode(
-        token_id=token_id,
-        ast_fragment=ast_fragment,
-        logit_prob=logit_prob,
-        smt_constraints=tuple(constraints),
-        kv_cache_hash=sha256_hex(kv_payload),
-        fvc_score=fvc_score,
-    )
+def build_candidate(token_id: int, ast_fragment: str, logit_prob: float,
+                    constraints: Iterable[Any], kv_payload: Any, fvc_score: float = 0.0) -> SpeculativeNode:
+    return SpeculativeNode(token_id, ast_fragment, logit_prob, tuple(constraints), sha256_hex(kv_payload), fvc_score)
 
 
 def candidate_to_json(node: SpeculativeNode) -> dict[str, Any]:
@@ -188,13 +173,8 @@ def candidate_to_json(node: SpeculativeNode) -> dict[str, Any]:
 
 
 __all__ = [
-    "ApexTTCRouter",
-    "IncrementalSymbolicVerifier",
-    "RoutingPlan",
-    "SpeculativeNode",
-    "VerificationResult",
-    "build_candidate",
-    "candidate_to_json",
-    "shannon_entropy",
-    "sha256_hex",
+    "ApexTTCRouter", "EGraphReducer", "IncrementalSymbolicVerifier",
+    "RoutingPlan", "SpeculativeNode", "VerificationResult",
+    "build_candidate", "candidate_to_json", "estimate_fvc",
+    "shannon_entropy", "sha256_hex",
 ]
