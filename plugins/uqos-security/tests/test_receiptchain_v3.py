@@ -58,7 +58,7 @@ class ReceiptChainV3Tests(unittest.TestCase):
                 b"ReceiptChain/TDX/report-data/v3\x00" + canonical_json(binding)
             ).digest()
             evidence = {"quote": "base64-encoded-quote", "collateral": {"pck_chain": "fixture"}}
-            attestation = {"evidence": evidence, "fixture_report_data": report_data.hex()}
+            attestation = {**evidence, "fixture_report_data": report_data.hex()}
             committed = chain.close_run("run-1", "runner-1", fence, attestation)
             with chain._connect() as db:
                 rows = [r["leaf"] for r in db.execute("SELECT leaf FROM log_leaves ORDER BY leaf_index")]
