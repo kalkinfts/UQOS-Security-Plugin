@@ -11,7 +11,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from receiptchain_v3 import (
     AttestationPolicy, ReceiptChain, ReceiptError, canonical_json,
-    inclusion_proof, merkle_root, verify_bundle, verify_inclusion,
+    consistency_proof, inclusion_proof, merkle_root, verify_bundle, verify_consistency, verify_inclusion,
 )
 
 
@@ -32,6 +32,20 @@ class ReceiptChainV3Tests(unittest.TestCase):
                 self.assertTrue(verify_inclusion(leaf, index, size, proof, root))
                 self.assertFalse(verify_inclusion(leaf, (index + 1) % size, size, proof, root))
             self.assertFalse(verify_inclusion(leaves[0], 0, size + 1, inclusion_proof(leaves, 0), root))
+
+    def test_rfc6962_consistency_proofs_bind_old_and_new_tree_roots(self):
+        for new_size in range(2, 24):
+            leaves = [f"leaf-{i}".encode() for i in range(new_size)]
+            new_root = merkle_root(leaves)
+            for old_size in range(1, new_size):
+                proof = consistency_proof(leaves, old_size)
+                self.assertTrue(verify_consistency(
+                    old_size, new_size, merkle_root(leaves[:old_size]), new_root, proof
+                ))
+                self.assertFalse(verify_consistency(
+                    old_size, new_size, merkle_root(leaves[:old_size]),
+                    hashlib.sha256(b"forged-root").digest(), proof
+                ))
 
     def test_zero_step_run_cannot_be_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
