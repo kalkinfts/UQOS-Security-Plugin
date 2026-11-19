@@ -1,0 +1,24 @@
+name: UQOS Refereed Silicon CI
+
+on:
+  push:
+    paths:
+      - 'plugins/uqos-security/scripts/refereed_silicon.py'
+      - 'plugins/uqos-security/tests/test_refereed_silicon.py'
+      - 'docs/REFEREED_SILICON_EXECUTION.md'
+  pull_request:
+    paths:
+      - 'plugins/uqos-security/scripts/refereed_silicon.py'
+      - 'plugins/uqos-security/tests/test_refereed_silicon.py'
+      - 'docs/REFEREED_SILICON_EXECUTION.md'
+
+jobs:
+  refereed-silicon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m compileall plugins/uqos-security/scripts plugins/uqos-security/tests
+      - run: python -m pytest plugins/uqos-security/tests/test_refereed_silicon.py -q
